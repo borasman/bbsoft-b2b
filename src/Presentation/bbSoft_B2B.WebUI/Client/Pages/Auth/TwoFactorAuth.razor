@@ -1,0 +1,117 @@
+@page "/two-factor-auth"
+@using bbSoft_B2B.WebUI.Client.Services.Auth
+@using bbSoft_B2B.Shared.Authorization
+@inject IAuthService AuthService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-12 col-md-6 col-lg-4">
+            <div class="card mt-5">
+                <div class="card-header bg-primary text-white">
+                    <h3 class="card-title text-center">Two-Factor Authentication</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-center">Please enter the verification code from your authenticator app.</p>
+                    
+                    <EditForm Model="@model" OnSubmit="@VerifyCode">
+                        <DataAnnotationsValidator />
+                        
+                        @if (errorMessage != null)
+                        {
+                            <div class="alert alert-danger">
+                                @errorMessage
+                            </div>
+                        }
+                        
+                        <div class="form-group">
+                            <label for="code">Verification Code:</label>
+                            <InputText id="code" @bind-Value="model.Code" class="form-control" maxlength="6" />
+                            <ValidationMessage For="@(() => model.Code)" class="text-danger" />
+                        </div>
+                        
+                        <div class="form-group mt-3">
+                            <button type="submit" class="btn btn-primary w-100" disabled="@isProcessing">
+                                @if (isProcessing)
+                                {
+                                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                    <span> Verifying...</span>
+                                }
+                                else
+                                {
+                                    <span>Verify Code</span>
+                                }
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private TwoFactorModel model = new();
+    private string? userId;
+    private string? errorMessage;
+    private bool isProcessing = false;
+    
+    protected override void OnInitialized()
+    {
+        var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        
+        if (Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query).TryGetValue("userId", out var userIdParam))
+        {
+            userId = userIdParam;
+        }
+        else
+        {
+            // UserId yoksa login sayfasına geri dön
+            NavigationManager.NavigateTo("/login");
+        }
+    }
+    
+    private async Task VerifyCode()
+    {
+        if (string.IsNullOrEmpty(userId))
+        {
+            errorMessage = "User information is missing. Please try logging in again.";
+            return;
+        }
+        
+        isProcessing = true;
+        errorMessage = null;
+        
+        try
+        {
+            var result = await AuthService.Verify2faCode(userId, model.Code);
+            
+            if (result.Successful)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Authentication successful!");
+                NavigationManager.NavigateTo("/");
+            }
+            else
+            {
+                errorMessage = result.Errors?.FirstOrDefault() ?? "Invalid verification code.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "An error occurred: " + ex.Message;
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+    
+    private class TwoFactorModel
+    {
+        [Required]
+        [StringLength(6, MinimumLength = 6, ErrorMessage = "The verification code must be 6 digits.")]
+        [RegularExpression("^[0-9]*$", ErrorMessage = "Only numbers are allowed.")]
+        public string Code { get; set; } = string.Empty;
+    }
+}
