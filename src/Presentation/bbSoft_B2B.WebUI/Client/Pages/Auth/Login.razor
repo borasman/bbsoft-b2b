@@ -1,0 +1,128 @@
+@page "/login"
+@using bbSoft_B2B.WebUI.Client.Services.Auth
+@using bbSoft_B2B.Shared.Authorization
+@inject IAuthService AuthService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-12 col-md-6 col-lg-4">
+            <div class="card mt-5">
+                <div class="card-header bg-primary text-white">
+                    <h3 class="card-title text-center">Login</h3>
+                </div>
+                <div class="card-body">
+                    <EditForm Model="@loginModel" OnSubmit="@HandleLogin">
+                        <DataAnnotationsValidator />
+                        
+                        @if (errorMessage != null)
+                        {
+                            <div class="alert alert-danger">
+                                @errorMessage
+                            </div>
+                        }
+                        
+                        <div class="form-group">
+                            <label for="email">Email:</label>
+                            <InputText id="email" @bind-Value="loginModel.Email" class="form-control" />
+                            <ValidationMessage For="@(() => loginModel.Email)" class="text-danger" />
+                        </div>
+                        
+                        <div class="form-group mt-3">
+                            <label for="password">Password:</label>
+                            <InputText id="password" @bind-Value="loginModel.Password" class="form-control" type="password" />
+                            <ValidationMessage For="@(() => loginModel.Password)" class="text-danger" />
+                        </div>
+                        
+                        <div class="form-group mt-3">
+                            <button type="submit" class="btn btn-primary w-100" disabled="@isProcessing">
+                                @if (isProcessing)
+                                {
+                                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                    <span> Logging in...</span>
+                                }
+                                else
+                                {
+                                    <span>Login</span>
+                                }
+                            </button>
+                        </div>
+                        
+                        <div class="mt-3 text-center">
+                            <a href="/register">Don't have an account? Register here</a>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private LoginModel loginModel = new();
+    private string? errorMessage;
+    private bool isProcessing = false;
+    
+    protected override async Task OnInitializedAsync()
+    {
+        // Check if user is already authenticated
+        if (await AuthService.CheckAuthStatus())
+        {
+            NavigationManager.NavigateTo("/");
+        }
+    }
+    
+    private async Task HandleLogin()
+    {
+        isProcessing = true;
+        errorMessage = null;
+        
+        try
+        {
+            var request = new LoginRequest 
+            {
+                Email = loginModel.Email,
+                Password = loginModel.Password
+            };
+            
+            var result = await AuthService.Login(request);
+            
+            if (result.Successful)
+            {
+                if (result.RequiresTwoFactor)
+                {
+                    // 2FA gerekiyor, 2FA sayfasına yönlendir
+                    NavigationManager.NavigateTo($"/two-factor-auth?userId={result.UserId}");
+                }
+                else
+                {
+                    // Normal giriş başarılı, ana sayfaya yönlendir
+                    NavigationManager.NavigateTo("/");
+                }
+            }
+            else
+            {
+                errorMessage = result.Errors?.FirstOrDefault() ?? "Invalid login attempt.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "An error occurred: " + ex.Message;
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+    
+    private class LoginModel
+    {
+        [Required]
+        [EmailAddress]
+        public string Email { get; set; } = string.Empty;
+        
+        [Required]
+        public string Password { get; set; } = string.Empty;
+    }
+}
